@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Harmonic Frame — Improv Take Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vexflow/4.2.2/vexflow.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+  :root{
+    --bg:#161019; --bg2:#1f1626; --bg3:#2a1f33; --line:#3a2c45;
+    --ink:#f3ece1; --muted:#a99cb0; --faint:#776a82;
+    --amber:#f0b66a; --amber-2:#e89b4c; --rose:#d98a8f; --teal:#86cabf;
+    --paper:#f7f2e8; --paper-edge:#e6dcc8; --ink-staff:#2a2118;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #2a1d33 0%, rgba(42,29,51,0) 60%),
+      radial-gradient(900px 500px at -10% 110%, #241a2c 0%, rgba(36,26,44,0) 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:"Space Grotesk",system-ui,sans-serif;
+    min-height:100vh;
+    padding:clamp(16px,4vw,44px);
+    line-height:1.5;
+  }
+  .wrap{max-width:1060px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+  .title{font-family:"Fraunces",serif;font-weight:500;font-size:clamp(30px,6vw,52px);line-height:.98;letter-spacing:-.01em;margin:0}
+  .title em{font-style:italic;color:var(--amber)}
+  .kicker{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+  .sub{color:var(--muted);font-size:14px;max-width:46ch}
+  .mark{font-family:"Space Mono",monospace;font-size:11px;color:var(--faint);text-align:right;letter-spacing:.05em;white-space:nowrap}
+
+  /* ---------- console strip ---------- */
+  .console{
+    display:grid;grid-template-columns:repeat(3,1fr) 1.3fr;gap:12px;
+    background:linear-gradient(180deg,var(--bg2),var(--bg));
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:18px;
+  }
+  @media(max-width:680px){.console{grid-template-columns:1fr 1fr}}
+  .readout{position:relative;background:#120c18;border:1px solid var(--line);border-radius:10px;padding:12px 14px 11px;overflow:hidden}
+  .readout::after{content:"";position:absolute;top:11px;right:12px;width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 9px var(--amber);opacity:.9}
+  .readout.cool::after{background:var(--teal);box-shadow:0 0 9px var(--teal)}
+  .readout label{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+  .readout .val{font-family:"Space Mono",monospace;font-weight:700;font-size:21px;color:var(--amber);text-shadow:0 0 14px rgba(240,182,106,.35)}
+  .readout select,.readout input[type=number]{
+    width:100%;background:transparent;border:0;color:var(--amber);
+    font-family:"Space Mono",monospace;font-weight:700;font-size:21px;
+    padding:0;margin:0;cursor:pointer;text-shadow:0 0 14px rgba(240,182,106,.35);
+  }
+  .readout select:focus,.readout input:focus{outline:none}
+  .readout select option{background:#1b1322;color:var(--ink)}
+  .bpm-row{display:flex;align-items:center;gap:8px}
+  .bpm-row input[type=range]{flex:1;accent-color:var(--amber);height:3px}
+  .density{display:flex;flex-direction:column;justify-content:center}
+  .density input[type=range]{width:100%;accent-color:var(--rose);margin-top:6px}
+  .density .scale{display:flex;justify-content:space-between;font-size:9px;color:var(--faint);letter-spacing:.12em;text-transform:uppercase;margin-top:2px}
+
+  /* ---------- score card ---------- */
+  .card{
+    background:linear-gradient(180deg,var(--paper),#f2ebdc);
+    border:1px solid var(--paper-edge);
+    border-radius:var(--radius);
+    box-shadow:0 22px 50px -28px rgba(0,0,0,.7), inset 0 1px 0 #fffef9;
+    padding:18px 14px 10px;position:relative;overflow:hidden;
+  }
+  .card::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(90deg,rgba(0,0,0,.012) 0 2px,transparent 2px 5px);opacity:.5}
+  #scoreWrap{position:relative}
+  #score{width:100%;height:auto;display:block}
+  #score svg{width:100%;height:auto;display:block}
+  .hl{position:absolute;background:rgba(240,160,76,.16);border-left:2px solid var(--amber-2);border-radius:3px;pointer-events:none;opacity:0;transition:opacity .12s}
+  .hl.on{opacity:1}
+  .score-msg{font-family:"Space Mono",monospace;color:#7a6a55;padding:38px 16px;text-align:center;font-size:13px}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}
+  button{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;cursor:pointer;
+    border-radius:11px;border:1px solid var(--line);color:var(--ink);background:var(--bg3);
+    padding:12px 18px;display:inline-flex;align-items:center;gap:9px;transition:transform .08s,background .15s,border-color .15s}
+  button:hover{background:#352741;border-color:#4a3858}
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .btn-take{background:linear-gradient(180deg,var(--amber),var(--amber-2));color:#2a1a05;border-color:#caa14e;box-shadow:0 10px 24px -12px rgba(240,182,106,.7)}
+  .btn-take:hover{background:linear-gradient(180deg,#f6c47e,#efa85a)}
+  .btn-play.playing{background:var(--teal);color:#082420;border-color:#6fb6ac}
+  .dice{font-size:16px;line-height:1}
+  .spacer{flex:1}
+  .seed{font-family:"Space Mono",monospace;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .seed input{font-family:"Space Mono",monospace;font-size:12px;background:#120c18;border:1px solid var(--line);
+    color:var(--amber);border-radius:8px;padding:6px 8px;width:96px;letter-spacing:.05em}
+  .seed input:focus{outline:none;border-color:var(--amber)}
+  .loopwrap{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);user-select:none;cursor:pointer}
+  .loopwrap input{accent-color:var(--teal);width:15px;height:15px}
+
+  footer{margin-top:20px;color:var(--faint);font-size:12px;line-height:1.6}
+  footer b{color:var(--muted);font-weight:600}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <p class="kicker">Harmonic Frame · neo-soul / jazz-R&amp;B</p>
+      <h1 class="title">Improv <em>Take</em> Generator</h1>
+      <p class="sub">Rolls a fresh 8-bar lead line over the loop — chord tones on the strong beats, stepwise lines between, loose syncopation in the cracks.</p>
+    </div>
+    <div class="mark">C♯m9 · Bmaj7 · Amaj7 · G♯7♭9<br>F♯m9 · Emaj7 · D♯m7♭5 · G♯7♭9</div>
+  </header>
+
+  <section class="console" aria-label="Take settings">
+    <div class="readout">
+      <label for="keySel">Song key</label>
+      <select id="keySel" aria-label="Song key"></select>
+    </div>
+    <div class="readout">
+      <label for="timeSel">Time signature</label>
+      <select id="timeSel" aria-label="Time signature">
+        <option value="4/4">4 / 4</option>
+        <option value="3/4">3 / 4</option>
+        <option value="6/8">6 / 8</option>
+      </select>
+    </div>
+    <div class="readout cool">
+      <label for="bpm">Tempo · BPM</label>
+      <div class="bpm-row">
+        <span class="val" id="bpmVal" style="color:var(--teal);text-shadow:0 0 14px rgba(134,202,191,.35)">117</span>
+        <input id="bpm" type="range" min="60" max="180" step="1" value="117" aria-label="Beats per minute">
+      </div>
+    </div>
+    <div class="readout density">
+      <label for="dens">Line density</label>
+      <input id="dens" type="range" min="0" max="100" step="1" value="50" aria-label="Line density">
+      <div class="scale"><span>Spacious</span><span>Busy</span></div>
+    </div>
+  </section>
+
+  <div class="card">
+    <div id="scoreWrap">
+      <div id="score"><div class="score-msg">Loading engraver…</div></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-take" id="newTake"><span class="dice">◆</span> New take</button>
+    <button class="btn-play" id="play">▶ Play</button>
+    <label class="loopwrap"><input type="checkbox" id="loop"> Loop</label>
+    <span class="spacer"></span>
+    <span class="seed">seed
+      <input id="seed" type="text" inputmode="latin" spellcheck="false" aria-label="Seed">
+    </span>
+  </div>
+
+  <footer>
+    <b>How it reads:</b> the line lands on chord tones (3rds, 7ths, 9ths) on downbeats and long notes, walks by step in between, and leans on the ♭9 over each G♯7. The last bar resolves home. &nbsp;<b>Note:</b> accidentals are spelled to the selected key signature, so a few leading tones may show enharmonically. Built with VexFlow + Tone.js.
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const VF = (window.Vex && window.Vex.Flow) || window.VexFlow;
+  const scoreEl = document.getElementById('score');
+
+  /* ---------------- key data ---------------- */
+  const SHARP=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const FLAT =["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
+  const KEYS = [
+    {id:'csm',name:'C♯ minor',pc:1, sharps:true, vexKey:'E',  km:{f:'#',c:'#',g:'#',d:'#'}},
+    {id:'fsm',name:'F♯ minor',pc:6, sharps:true, vexKey:'A',  km:{f:'#',c:'#',g:'#'}},
+    {id:'gsm',name:'G♯ minor',pc:8, sharps:true, vexKey:'B',  km:{f:'#',c:'#',g:'#',d:'#',a:'#'}},
+    {id:'bm', name:'B minor', pc:11,sharps:true, vexKey:'D',  km:{f:'#',c:'#'}},
+    {id:'em', name:'E minor', pc:4, sharps:true, vexKey:'G',  km:{f:'#'}},
+    {id:'am', name:'A minor', pc:9, sharps:true, vexKey:'C',  km:{}},
+    {id:'dm', name:'D minor', pc:2, sharps:false,vexKey:'F',  km:{b:'b'}},
+    {id:'gm', name:'G minor', pc:7, sharps:false,vexKey:'Bb', km:{b:'b',e:'b'}},
+    {id:'cm', name:'C minor', pc:0, sharps:false,vexKey:'Eb', km:{b:'b',e:'b',a:'b'}},
+    {id:'fm', name:'F minor', pc:5, sharps:false,vexKey:'Ab', km:{b:'b',e:'b',a:'b',d:'b'}},
+  ];
+
+  /* chords relative to the minor tonic (offsets in semitones, 0=tonic) */
+  const BARS = [
+    {root:0, disp:'m9',         strong:[0,3,7,10,2],  avail:[0,2,3,5,7,8,10]},
+    {root:10,disp:'maj7(add9)', strong:[10,2,5,9,0],  avail:[10,0,2,3,5,7,9]},
+    {root:8, disp:'maj7',       strong:[8,0,3,7],     avail:[8,10,0,2,3,5,7]},
+    {root:7, disp:'7(♭9)',      strong:[7,11,5,8],    avail:[5,7,8,11,0,2]},
+    {root:5, disp:'m9',         strong:[5,8,0,3,7],   avail:[5,7,8,10,0,2,3]},
+    {root:3, disp:'maj7',       strong:[3,7,10,2],    avail:[3,5,7,9,10,0,2]},
+    {root:2, disp:'m7♭5',       strong:[2,5,8,0],     avail:[2,3,5,7,8,10,0]},
+    {root:7, disp:'7(♭9)',      strong:[7,11,5,8],    avail:[5,7,8,11,0,2]},
+  ];
+  const NAT={c:0,d:2,e:4,f:5,g:7,a:9,b:11};
+  const MEL_LOW=71, MEL_HIGH=88;
+
+  /* ---------------- rng ---------------- */
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+  /* ---------------- spelling ---------------- */
+  function spell(midi,key){
+    const pc=((midi%12)+12)%12;
+    const nm=(key.sharps?SHARP:FLAT)[pc];
+    const letter=nm[0].toLowerCase();
+    const acc=nm.length>1?(nm[1]==='#'?'#':'b'):'';
+    const written=NAT[letter]+(acc==='#'?1:acc==='b'?-1:0);
+    const octave=Math.round((midi-written)/12)-1;
+    return {letter,acc,octave,vex:letter+(acc||'')+'/'+octave};
+  }
+
+  /* ---------------- rhythm ---------------- */
+  // durations measured in sixteenths
+  const DUR={1:{code:'16',dots:0},2:{code:'8',dots:0},3:{code:'8',dots:1},
+             4:{code:'q',dots:0},6:{code:'q',dots:1},8:{code:'h',dots:0},
+             12:{code:'h',dots:1},16:{code:'w',dots:0}};
+
+  function genRhythm(totalSlots, per16Beat, density, rng){
+    const ev=[]; let pos=0;
+    while(pos<totalSlots){
+      const rem=totalSlots-pos;
+      const onBeat = pos%per16Beat===0;
+      const choices=[];
+      if(rem>=8 && rng()<0.08) choices.push(8);
+      if(rem>=6 && rng()<0.16) choices.push(6);
+      if(rem>=4) choices.push(4);
+      if(rem>=3 && rng()<(0.22+0.30*density)) choices.push(3,3); // dotted-8th syncopation
+      if(rem>=2) choices.push(2,2,2);
+      if(rem>=1 && rng()<(0.18+0.5*density)) choices.push(1,1);   // sixteenths
+      if(!choices.length) choices.push(Math.min(rem,2));
+      let dur=Math.min(choices[Math.floor(rng()*choices.length)],rem);
+      if(!DUR[dur]) dur=rem>=2?2:1;
+      // rests: more when spacious; never on the very first slot
+      let rest=false;
+      const restProb=(0.30-0.20*density)*(onBeat?0.6:1);
+      if(pos>0 && rng()<restProb) rest=true;
+      ev.push({slots:dur,rest,slot:pos,onBeat});
+      pos+=dur;
+    }
+    return ev;
+  }
+
+  /* ---------------- pitch picking ---------------- */
+  function poolMidis(offs, tonicPc){
+    const set=new Set(offs.map(o=>((o%12)+12)%12));
+    const out=[];
+    for(let m=MEL_LOW;m<=MEL_HIGH;m++){
+      const pc=(((m-(60+tonicPc))%12)+12)%12;
+      if(set.has(pc)) out.push(m);
+    }
+    return out;
+  }
+  function pick(pool, prev, prev2, center, rng, allowLeap){
+    if(!pool.length) return prev!=null?prev:Math.round(center);
+    const leap = allowLeap && rng()<0.22;
+    let best=null,bestScore=1e9;
+    for(const m of pool){
+      let s=0;
+      if(prev!=null){
+        const step=Math.abs(m-prev);
+        if(step===0) s+=6;                                   // don't sit on a pitch
+        else s += leap?0:(step<=2 ? step*0.6 : 2+(step-2)*1.4); // prefer steps, occasional leaps
+        if(m===prev2) s+=2;                                  // avoid A-B-A ping-pong
+      }
+      s += Math.abs(m-center)*0.4;                           // stay in the phrase arc
+      s += rng()*2.0;                                        // keep it loose
+      if(s<bestScore){bestScore=s;best=m;}
+    }
+    return best;
+  }
+
+  /* ---------------- generate full take ---------------- */
+  function generate(key, meter, density, seed){
+    const rng=mulberry32(seed>>>0);
+    const [num,den]=meter.split('/').map(Number);
+    const per16=16/den;                 // sixteenths per notated beat
+    const slotsPerBar=num*per16;        // total sixteenths in a bar
+    const per16Beat = (den===8)?3:per16;// compound 6/8 groups by dotted quarter
+    const tonicPc=key.pc;
+    let prev=null, prev2=null;
+    const bars=[];
+    for(let b=0;b<8;b++){
+      const ch=BARS[b];
+      const center=77+7*Math.sin(Math.PI*b/7);
+      const strongMid=poolMidis(ch.strong,tonicPc);
+      const availMid =poolMidis(ch.avail,tonicPc);
+      let rhythm;
+      if(b===7){ // closing bar: pickups then a held resolution
+        const held = slotsPerBar>=16?12:8;
+        const fill=[]; let p=0;
+        while(p < slotsPerBar-held){fill.push({slots:2,rest:false,slot:p,onBeat:p%per16Beat===0});p+=2;}
+        fill.push({slots:held,rest:false,slot:slotsPerBar-held,onBeat:true,final:true});
+        rhythm=fill;
+      } else {
+        rhythm=genRhythm(slotsPerBar,per16Beat,density,rng);
+      }
+      const notes=[];
+      rhythm.forEach((r,i)=>{
+        const d=DUR[r.slots]||DUR[2];
+        if(r.rest){notes.push({rest:true,code:d.code,dots:d.dots,slots:r.slots});return;}
+        const strongPos = r.slot===0 || r.onBeat && r.slots>=4 || r.final;
+        let m;
+        if(r.final){
+          const tonics=poolMidis([0,3,7],tonicPc).filter(x=>x<=(prev==null?84:prev+2));
+          m=pick(tonics.length?tonics:poolMidis([0,3,7],tonicPc),prev,prev2,Math.min(center,80),rng,false);
+        } else if(strongPos){
+          m=pick(strongMid,prev,prev2,center,rng,true);
+        } else {
+          m=pick(availMid,prev,prev2,center,rng,false);
+        }
+        prev2=prev; prev=m;
+        const sp=spell(m,key);
+        notes.push({rest:false,midi:m,vex:sp.vex,letter:sp.letter,acc:sp.acc,code:d.code,dots:d.dots,slots:r.slots});
+      });
+      // chord symbol
+      const rn=(key.sharps?SHARP:FLAT)[((tonicPc+ch.root)%12+12)%12].replace('#','♯').replace('b','♭');
+      bars.push({sym:rn+ch.disp, notes, rootOff:ch.root, strong:ch.strong});
+    }
+    return {bars, key, meter, num, den, per16, slotsPerBar, per16Beat, seed:seed>>>0, density};
+  }
+
+  /* ---------------- render ---------------- */
+  const W=1000, H=320, MARGIN=14, EXTRA=96, SYSY=[68,210], BARS_PER_SYS=4;
+  let boxes=[];
+
+  function accSymbol(letter,acc,measure,km){
+    const cur = (letter in measure)?measure[letter]:(km[letter]||'');
+    const want = acc; // '', '#', 'b'
+    if(want===cur) return null;
+    measure[letter]=want;
+    return want===''?'n':want;
+  }
+
+  function render(take){
+    scoreEl.innerHTML='';
+    boxes=[];
+    if(!VF){scoreEl.innerHTML='<div class="score-msg">Notation engine failed to load. Check your network and reopen.</div>';return;}
+    try{
+      const renderer=new VF.Renderer(scoreEl, VF.Renderer.Backends.SVG);
+      renderer.resize(W,H);
+      const ctx=renderer.getContext();
+      ctx.setFillStyle('#2a2118'); ctx.setStrokeStyle('#2a2118');
+      const km=take.key.km;
+
+      for(let s=0;s<2;s++){
+        const y=SYSY[s];
+        const avail=W-MARGIN*2-EXTRA;
+        const base=avail/BARS_PER_SYS;
+        let x=MARGIN;
+        for(let bi=0;bi<BARS_PER_SYS;bi++){
+          const idx=s*BARS_PER_SYS+bi;
+          const bar=take.bars[idx];
+          const first=(bi===0);
+          const w=first?base+EXTRA:base;
+          const stave=new VF.Stave(x,y,w);
+          if(first){
+            stave.addClef('treble').addKeySignature(take.key.vexKey);
+            if(s===0) stave.addTimeSignature(take.meter);
+          }
+          if(s===0 && bi===0){ stave.setTempo({duration:'q',dots:0,bpm:take.bpm||117}, -14); }
+          stave.setContext(ctx).draw();
+          boxes.push({x:x, y:y-30, w:w, h:118, idx});
+
+          // build notes
+          const measure={};
+          const tnotes=bar.notes.map((n,ni)=>{
+            if(n.rest){
+              const sn=new VF.StaveNote({clef:'treble',keys:['b/4'],duration:n.code+'r'});
+              if(n.dots) VF.Dot.buildAndAttach([sn],{all:true});
+              return sn;
+            }
+            const sn=new VF.StaveNote({clef:'treble',keys:[n.vex],duration:n.code});
+            const sym=accSymbol(n.letter,n.acc,measure,km);
+            if(sym) sn.addModifier(new VF.Accidental(sym),0);
+            if(n.dots) VF.Dot.buildAndAttach([sn],{all:true});
+            return sn;
+          });
+
+          // chord symbol on first sounding note (or first note)
+          let anchor=tnotes.find((t,ti)=>!bar.notes[ti].rest)||tnotes[0];
+          if(anchor){
+            const ann=new VF.Annotation(bar.sym)
+              .setVerticalJustification(VF.Annotation.VerticalJustify.TOP)
+              .setJustification(VF.Annotation.HorizontalJustify.LEFT);
+            try{ann.setFont('Space Grotesk',13,'600');}catch(e){}
+            anchor.addModifier(ann,0);
+          }
+
+          const voice=new VF.Voice({num_beats:take.num,beat_value:take.den}).setStrict(false);
+          voice.addTickables(tnotes);
+          let beams=[];
+          try{
+            const grp=(take.den===8)?[new VF.Fraction(3,8)]:[new VF.Fraction(1,4)];
+            beams=VF.Beam.generateBeams(tnotes,{groups:grp});
+          }catch(e){ try{beams=VF.Beam.generateBeams(tnotes);}catch(e2){beams=[];} }
+          new VF.Formatter().joinVoices([voice]).format([voice], w-(first?EXTRA+8:14));
+          voice.draw(ctx,stave);
+          beams.forEach(bm=>bm.setContext(ctx).draw());
+          x+=w;
+        }
+      }
+      buildHighlights();
+    }catch(err){
+      scoreEl.innerHTML='<div class="score-msg">Could not engrave this take ('+(err&&err.message||err)+'). Try another.</div>';
+    }
+  }
+
+  /* highlight overlay for playback */
+  let hlNodes=[];
+  function buildHighlights(){
+    const wrap=document.getElementById('scoreWrap');
+    document.querySelectorAll('.hl').forEach(n=>n.remove());
+    hlNodes=[];
+    boxes.sort((a,b)=>a.idx-b.idx);
+    boxes.forEach(box=>{
+      const d=document.createElement('div');
+      d.className='hl';
+      d.style.left=(box.x/W*100)+'%';
+      d.style.top=(box.y/H*100)+'%';
+      d.style.width=(box.w/W*100)+'%';
+      d.style.height=(box.h/H*100)+'%';
+      wrap.appendChild(d);
+      hlNodes[box.idx]=d;
+    });
+  }
+  function highlight(idx){
+    hlNodes.forEach(n=>n&&n.classList.remove('on'));
+    if(idx>=0 && hlNodes[idx]) hlNodes[idx].classList.add('on');
+  }
+
+  /* ---------------- audio ---------------- */
+  let nodes=null, playing=false;
+  function disposeAudio(){
+    if(window.Tone){try{Tone.Transport.stop();Tone.Transport.cancel();}catch(e){}}
+    if(nodes){ ['parts'].forEach(()=>{}); Object.values(nodes).forEach(n=>{try{n.dispose&&n.dispose();}catch(e){}});
+      if(nodes.parts) nodes.parts.forEach(p=>{try{p.dispose();}catch(e){}});}
+    nodes=null;
+  }
+  async function playTake(take, bpm, loop){
+    if(!window.Tone){return;}
+    await Tone.start();
+    disposeAudio();
+    const reverb=new Tone.Reverb({decay:3.2,wet:0.28}).toDestination();
+    const lead=new Tone.Synth({oscillator:{type:'triangle'},envelope:{attack:0.012,decay:0.18,sustain:0.32,release:0.7}}).connect(reverb);
+    lead.volume.value=-7;
+    const pad=new Tone.PolySynth(Tone.Synth,{oscillator:{type:'sine'},envelope:{attack:0.45,decay:0.3,sustain:0.7,release:1.6}}).connect(reverb);
+    pad.volume.value=-20;
+    const bass=new Tone.MonoSynth({oscillator:{type:'sine'},envelope:{attack:0.02,decay:0.2,sustain:0.65,release:0.35},filter:{Q:1,type:'lowpass'},filterEnvelope:{attack:0.02,baseFrequency:200,octaves:2.4}}).connect(reverb);
+    bass.volume.value=-9;
+
+    const sec16=(60/bpm)/4;
+    const tonicPc=take.key.pc;
+    const mEvents=[],padEvents=[],bassEvents=[],barEvents=[];
+    take.bars.forEach((bar,bi)=>{
+      const barStart=bi*take.slotsPerBar*sec16;
+      barEvents.push({time:barStart,idx:bi});
+      // melody
+      let pos=0;
+      bar.notes.forEach(n=>{
+        const t=barStart+pos*sec16;
+        if(!n.rest){
+          const dur=Math.max(n.slots*sec16*0.92,0.05);
+          mEvents.push({time:t,midi:n.midi,dur});
+        }
+        pos+=n.slots;
+      });
+      // pad voicing
+      const voic=[]; const seen=new Set();
+      bar.strong.slice(0,4).forEach(o=>{let m=48+(((tonicPc+o)%12)+12)%12; if(m<52)m+=12; if(!seen.has(m)){seen.add(m);voic.push(midiNote(m));}});
+      padEvents.push({time:barStart,notes:voic,dur:take.slotsPerBar*sec16*0.95});
+      // bass root pulse per beat
+      let rm=36+(((tonicPc+bar.rootOff)%12)+12)%12; if(rm<38)rm+=12;
+      const beats=take.num, beatSec=take.slotsPerBar*sec16/beats;
+      for(let k=0;k<beats;k++) bassEvents.push({time:barStart+k*beatSec,midi:rm,dur:beatSec*0.9});
+    });
+    const phrase=take.bars.length*take.slotsPerBar*sec16;
+
+    const mPart=new Tone.Part((time,e)=>{lead.triggerAttackRelease(freq(e.midi),e.dur,time);},mEvents);
+    const pPart=new Tone.Part((time,e)=>{pad.triggerAttackRelease(e.notes,e.dur,time);},padEvents);
+    const bPart=new Tone.Part((time,e)=>{bass.triggerAttackRelease(freq(e.midi),e.dur,time);},bassEvents);
+    const hPart=new Tone.Part((time,e)=>{Tone.Draw.schedule(()=>highlight(e.idx),time);},barEvents);
+    [mPart,pPart,bPart,hPart].forEach(p=>{p.start(0);if(loop){p.loop=true;p.loopEnd=phrase;}});
+
+    nodes={reverb,lead,pad,bass,parts:[mPart,pPart,bPart,hPart]};
+    Tone.Transport.bpm.value=bpm;
+    if(!loop){
+      Tone.Transport.scheduleOnce(()=>{Tone.Draw.schedule(()=>{highlight(-1);stopPlayback();},'+0');}, phrase+0.15);
+    }
+    Tone.Transport.start();
+    playing=true; setPlayBtn(true);
+  }
+  function midiNote(m){return freqName(m);}
+  function freq(m){return 440*Math.pow(2,(m-69)/12);}
+  const NAMES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  function freqName(m){return NAMES[m%12]+(Math.floor(m/12)-1);}
+  function stopPlayback(){disposeAudio();playing=false;setPlayBtn(false);highlight(-1);}
+  function setPlayBtn(on){const b=document.getElementById('play');b.textContent=on?'■ Stop':'▶ Play';b.classList.toggle('playing',on);}
+
+  /* ---------------- state + wiring ---------------- */
+  const state={keyId:'csm',meter:'4/4',bpm:117,density:0.5,seed:0,take:null};
+
+  const keySel=document.getElementById('keySel');
+  KEYS.forEach(k=>{const o=document.createElement('option');o.value=k.id;o.textContent=k.name;keySel.appendChild(o);});
+  keySel.value=state.keyId;
+
+  function keyById(id){return KEYS.find(k=>k.id===id)||KEYS[0];}
+  function regen(newSeed){
+    if(newSeed!==undefined) state.seed=newSeed>>>0;
+    const take=generate(keyById(state.keyId),state.meter,state.density,state.seed);
+    take.bpm=state.bpm;
+    state.take=take;
+    document.getElementById('seed').value=state.seed.toString(16).padStart(8,'0');
+    render(take);
+  }
+  function rerenderOnly(){ if(state.take){state.take.bpm=state.bpm; render(state.take);} }
+
+  document.getElementById('newTake').addEventListener('click',()=>{ if(playing)stopPlayback(); regen((Math.random()*0xffffffff)>>>0); });
+  keySel.addEventListener('change',e=>{state.keyId=e.target.value; if(playing)stopPlayback(); regen();});
+  document.getElementById('timeSel').addEventListener('change',e=>{state.meter=e.target.value; if(playing)stopPlayback(); regen();});
+  document.getElementById('bpm').addEventListener('input',e=>{state.bpm=+e.target.value; document.getElementById('bpmVal').textContent=state.bpm; rerenderOnly();});
+  document.getElementById('dens').addEventListener('input',e=>{state.density=(+e.target.value)/100;});
+  document.getElementById('dens').addEventListener('change',()=>{ if(playing)stopPlayback(); regen();});
+  document.getElementById('seed').addEventListener('change',e=>{
+    const v=parseInt(e.target.value,16);
+    if(!isNaN(v)){ if(playing)stopPlayback(); regen(v>>>0);} else { e.target.value=state.seed.toString(16).padStart(8,'0'); }
+  });
+  document.getElementById('play').addEventListener('click',()=>{
+    if(playing){stopPlayback();return;}
+    if(!state.take)return;
+    playTake(state.take,state.bpm,document.getElementById('loop').checked);
+  });
+  document.getElementById('loop').addEventListener('change',()=>{ if(playing){stopPlayback();} });
+
+  let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(rerenderOnly,180);});
+
+  function boot(){
+    if(!VF){scoreEl.innerHTML='<div class="score-msg">Notation engine still loading… if this persists, check your network.</div>';return setTimeout(boot,300);}
+    regen((Math.random()*0xffffffff)>>>0);
+  }
+  if(document.readyState==='complete') boot(); else window.addEventListener('load',boot);
+})();
+</script>
+</body>
+</html>
